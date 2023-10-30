@@ -11,12 +11,19 @@ from pathlib import Path
 import psutil
 import requests
 from jinja2 import Environment, FileSystemLoader
+from rich import print
+from rich.panel import Panel
+from rich.table import Table
 
 if subprocess.run(["mountpoint", "/mnt"]).returncode == 0:
     sys.exit("Something is already mounted at /mnt!")
 
+### Collect information
+
 sys_block = Path("/sys/block/")
 disks = [p.name for p in sys_block.iterdir() if (p / "device").is_dir()]
+# Whether or not we are on a (U)EFI system
+efi = Path("/sys/firmware/efi").is_dir()
 
 
 def disk_size_kb(disk: str) -> int:
@@ -40,6 +47,7 @@ for i, name in enumerate(disks):
     model = maybe_read_first_line(sys_block / name / "device" / "model")
     size_gb = float(disk_size_kb(name)) / 1024 / 1024
     print(f"{i + 1}: /dev/{name:12} {vendor:12} {model:32} {size_gb:.3f} Gb total")
+
 print()
 
 
@@ -59,6 +67,7 @@ def ask_disk() -> int:
 
 
 selected_disk = ask_disk()
+selected_disk_name = disks[selected_disk]
 print()
 
 
@@ -117,20 +126,49 @@ def ask_ssh_keys():
     while True:
         choice = input(
             f"Would you like to import ssh keys for {username} from github? (y/n)"
-        )
-        if choice.lower() == "y":
+        ).lower()
+        if choice == "y":
             gh_username = input("What github username should ssh keys be pulled from?")
             response = requests.get(f"https://github.com/{gh_username}.keys")
             assert response.ok
             return [key.strip() for key in response.text.split("\n") if key]
 
-        if choice.lower() == "n":
+        if choice == "n":
             return []
 
 
 ssh_keys = ask_ssh_keys()
+ram_bytes = psutil.virtual_memory().total
 
-selected_disk_name = disks[selected_disk]
+# The Ubuntu guidelines say max(1GB, sqrt(RAM)) for swap on computers not
+# utilizing hibernation. In the case of hibernation, max(1GB, RAM + sqrt(RAM)).
+# See https://help.ubuntu.com/community/SwapFaq.
+swap_bytes = max(int(sqrt(ram_bytes)), 1024 * 1024 * 1024)
+swap_mb = int(swap_bytes / 1024 / 1024)
+hibernation_swap_bytes = swap_bytes + ram_bytes
+hibernation_swap_mb = int(hibernation_swap_bytes / 1024 / 1024)
+
+# Timezone
+timezone = requests.get("http://ipinfo.io").json()["timezone"]
+
+
+# Template
+environment = Environment(loader=FileSystemLoader("./templates"))
+template = environment.get_template("configuration.nix")
+content = template.render(
+    efi=efi,
+    graphical=graphical,
+    hibernation_swap_mb=hibernation_swap_mb,
+    selected_disk_name=selected_disk_name,
+    swap_mb=swap_mb,
+    timezone=timezone,
+    username=username,
+    ssh=len(ssh_keys) > 0,
+    ssh_keys=ssh_keys,
+)
+
+
+### Install Phase
 print(
     f"Proceeding will entail repartitioning and formatting /dev/{selected_disk_name}.\n"
 )
@@ -147,6 +185,19 @@ def ask_proceed():
         return ask_proceed()
 
 
+grid = Table.grid(padding=(0, 2))
+grid.add_column(justify="right")
+grid.add_column()
+grid.add_row("Boot", "uefi" if efi else "BIOS")
+grid.add_row("Drive", selected_disk_name)
+grid.add_row("Ram", f"{(ram_bytes / 1024 / 1024 / 1024):.3f}Gb")
+grid.add_row("Timezone", timezone)
+grid.add_row("Username", username)
+for i, key in enumerate(ssh_keys, start=1):
+    grid.add_row(f"ssh-key-{i}", key)
+print(Panel.fit(grid, title="Install options"))
+
+
 ask_proceed()
 print()
 
@@ -161,8 +212,6 @@ def run(args):
 
 
 ### Partitioning
-# Whether or not we are on a (U)EFI system
-efi = Path("/sys/firmware/efi").is_dir()
 if efi:
     print("Detected EFI/UEFI boot. Proceeding with a GPT partition scheme...")
     # See https://nixos.org/manual/nixos/stable/index.html#sec-installation-partitioning-UEFI
@@ -307,23 +356,7 @@ with open(password_file_path, "w") as f:
     f.write(hashed_password)
 os.chmod(password_file_path, 600)
 
-ram_bytes = psutil.virtual_memory().total
-print(f"Detected {(ram_bytes / 1024 / 1024 / 1024):.3f} Gb of RAM...")
 
-# The Ubuntu guidelines say max(1GB, sqrt(RAM)) for swap on computers not
-# utilizing hibernation. In the case of hibernation, max(1GB, RAM + sqrt(RAM)).
-# See https://help.ubuntu.com/community/SwapFaq.
-swap_bytes = max(int(sqrt(ram_bytes)), 1024 * 1024 * 1024)
-swap_mb = int(swap_bytes / 1024 / 1024)
-hibernation_swap_bytes = swap_bytes + ram_bytes
-hibernation_swap_mb = int(hibernation_swap_bytes / 1024 / 1024)
-
-# Timezone
-timezone = requests.get("http://ipinfo.io").json()["timezone"]
-
-# Template
-environment = Environment(loader=FileSystemLoader("./templates"))
-template = environment.get_template("configuration.nix")
 config_path = "/mnt/etc/nixos/configuration.nix"
 
 
