@@ -12,9 +12,6 @@ import psutil
 import requests
 from jinja2 import Environment, FileSystemLoader
 
-if os.geteuid() != 0:
-    sys.exit("nixos-up must be run as root!")
-
 if subprocess.run(["mountpoint", "/mnt"]).returncode == 0:
     sys.exit("Something is already mounted at /mnt!")
 
