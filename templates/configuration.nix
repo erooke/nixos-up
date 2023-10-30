@@ -136,6 +136,13 @@ in {
     isNormalUser = true;
     extraGroups = ["wheel" "networkmanager"];
     passwordFile = "/etc/passwordFile-{{username}}";
+    {% if ssh -%}
+    openssh.authorizedKeys.keys = [
+      {%- for key in ssh_keys -%}
+      "{{key}}"
+      {%- endfor -%}
+    ];
+    {% endif -%}
   };
 
   # Disable password-based login for root.
@@ -158,8 +165,18 @@ in {
 
   # List services that you want to enable:
 
-  # Enable the OpenSSH daemon.
-  # services.openssh.enable = true;
+  # This setups a SSH server. Very important if you're setting up a headless system.
+  services.openssh = {
+    {% if ssh -%}
+    enable = true;
+    {% else -%}
+    enable = false;
+    {% endif -%}
+    # Forbid root login through SSH.
+    permitRootLogin = "no";
+    # Use keys only. Remove if you want to SSH using password (not recommended)
+    passwordAuthentication = false;
+  };
 
   # Open ports in the firewall.
   # networking.firewall.allowedTCPPorts = [ ... ];

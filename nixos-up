@@ -28,7 +28,8 @@ def disk_size_kb(disk: str) -> int:
         return int(f.readline().strip()) // 2
 
 
-# Vendor and model are not always present. See https://github.com/samuela/nixos-up/issues/2 and https://github.com/samuela/nixos-up/issues/6.
+# Vendor and model are not always present.
+# See https://github.com/samuela/nixos-up/issues/2 and https://github.com/samuela/nixos-up/issues/6.
 def maybe_read_first_line(path: Path) -> str:
     if path.is_file():
         with path.open() as f:
@@ -113,6 +114,24 @@ def ask_password() -> str:
 
 password = ask_password()
 print()
+
+
+def ask_ssh_keys():
+    while True:
+        choice = input(
+            f"Would you like to import ssh keys for {username} from github? (y/n)"
+        )
+        if choice.lower() == "y":
+            gh_username = input("What github username should ssh keys be pulled from?")
+            response = requests.get(f"https://github.com/{gh_username}.keys")
+            assert response.ok
+            return [key.strip() for key in response.text.split("\n") if key]
+
+        if choice.lower() == "n":
+            return []
+
+
+ssh_keys = ask_ssh_keys()
 
 selected_disk_name = disks[selected_disk]
 print(
@@ -320,6 +339,8 @@ with open(config_path, "w") as f:
         swap_mb=swap_mb,
         timezone=timezone,
         username=username,
+        ssh=len(ssh_keys) > 0,
+        ssh_keys=ssh_keys,
     )
     f.write(content)
 
