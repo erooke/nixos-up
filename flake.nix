@@ -23,7 +23,7 @@
     packages.${system}.default = nixos-up;
 
     devShells.${system}.default = pkgs.mkShell {
-      buildInputs = nixos-up.buildInputs;
+      buildInputs = [pkgs.just] ++ nixos-up.buildInputs;
     };
   };
 }
