@@ -4,7 +4,7 @@
   lib,
   stdenv,
 }: let
-  python = python3.withPackages (ps: [ps.psutil ps.requests ps.jinja2]);
+  python = python3.withPackages (ps: [ps.psutil ps.requests ps.jinja2 ps.rich]);
 in
   stdenv.mkDerivation {
     name = "nixos-up";
