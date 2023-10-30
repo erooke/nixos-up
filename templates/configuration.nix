@@ -138,9 +138,9 @@ in {
     passwordFile = "/etc/passwordFile-{{username}}";
     {% if ssh -%}
     openssh.authorizedKeys.keys = [
-      {%- for key in ssh_keys -%}
+      {% for key in ssh_keys -%}
       "{{key}}"
-      {%- endfor -%}
+      {% endfor -%}
     ];
     {% endif -%}
   };
