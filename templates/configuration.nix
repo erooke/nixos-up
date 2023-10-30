@@ -23,6 +23,14 @@ in {
   };
 
   imports = [
+    # If you want to use modules from other flakes (such as nixos-hardware):
+    # inputs.hardware.nixosModules.common-cpu-amd
+    # inputs.hardware.nixosModules.common-ssd
+
+    # You can also split up your configuration and import pieces of it here:
+    # ./users.nix
+
+    # Include the home-manager nixos module
     "${home-manager}/nixos"
     # Include the results of the hardware scan.
     ./hardware-configuration.nix
